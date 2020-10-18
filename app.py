@@ -1,63 +1,70 @@
+import pandas as pd
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
-import plotly.graph_objs as go
-
-########### Define your variables
-beers=['Chesapeake Stout', 'Snake Dog IPA', 'Imperial Porter', 'Double Dog IPA']
-ibu_values=[35, 60, 85, 75]
-abv_values=[5.4, 7.1, 9.2, 4.3]
-color1='darkred'
-color2='orange'
-mytitle='Beer Comparison'
-tabtitle='beer!'
-myheading='Flying Dog Beers'
-label1='IBU'
-label2='ABV'
-githublink='https://github.com/austinlasseter/flying-dog-beers'
-sourceurl='https://www.flyingdog.com/beers/'
-
-########### Set up the chart
-bitterness = go.Bar(
-    x=beers,
-    y=ibu_values,
-    name=label1,
-    marker={'color':color1}
-)
-alcohol = go.Bar(
-    x=beers,
-    y=abv_values,
-    name=label2,
-    marker={'color':color2}
-)
-
-beer_data = [bitterness, alcohol]
-beer_layout = go.Layout(
-    barmode='group',
-    title = mytitle
-)
-
-beer_fig = go.Figure(data=beer_data, layout=beer_layout)
+from dash.dependencies import Input, Output
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 
 
-########### Initiate the app
-external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+covid_df = pd.read_csv("https://covid.ourworldindata.org/data/owid-covid-data.csv")
+covid_df = covid_df[["continent",
+                     "location",
+                     "date",
+                     "total_cases",
+                    "new_cases",
+                    "new_cases_smoothed",
+                    "total_deaths",
+                    "new_deaths",
+                    "new_deaths_smoothed",]]
+
+covid_df = covid_df[covid_df["total_cases"].notna()]
+
+
+app = dash.Dash(__name__)
 server = app.server
-app.title=tabtitle
+country_names =covid_df.location.unique()
+country_names.sort()
 
-########### Set up the layout
-app.layout = html.Div(children=[
-    html.H1(myheading),
-    dcc.Graph(
-        id='flyingdog',
-        figure=beer_fig
-    ),
-    html.A('Code on Github', href=githublink),
-    html.Br(),
-    html.A('Data Source', href=sourceurl),
-    ]
+app.layout = html.Div([
+    html.Div([dcc.Dropdown(id='group-select', options=[{'label': i, 'value': i} for i in country_names],
+                           value='TOR', style={'width': '140px'})]),
+    dcc.Graph('country statistics', config={'displayModeBar': False})])
+
+@app.callback(
+    Output('country statistics', 'figure'),
+    [Input('group-select', 'value')]
 )
+def update_graph(name):  
+    country_df = covid_df[covid_df["location"].str.contains(name)]
+    country_df = country_df.sort_values(by="date",ascending=True)
 
+
+    fig = make_subplots(rows=2, cols=2,
+                       subplot_titles=("Total Cases", "Daily Cases","Total Deaths","Daily Deaths"))
+
+    fig.add_trace(
+        go.Scatter(x=country_df["date"], y=country_df["total_cases"]),
+        row=1, col=1
+    )
+
+    fig.add_trace(
+        go.Scatter(x=country_df["date"], y=country_df["total_deaths"]),
+        row=2, col=1
+    )
+
+    fig.add_trace(
+        go.Scatter(x=country_df["date"], y=country_df["new_cases"]),
+        row=1, col=2
+    )
+
+    fig.add_trace(
+        go.Scatter(x=country_df["date"], y=country_df["new_deaths"]),
+        row=2, col=2
+    )
+
+    fig.update_layout(height=800, width=800, title_text= name,showlegend=False)
+    return fig
+    
 if __name__ == '__main__':
-    app.run_server()
+    app.run_server(debug=False)
